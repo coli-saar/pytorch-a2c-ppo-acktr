@@ -4,6 +4,19 @@ import os
 import time
 from collections import deque
 
+from a2c_ppo_acktr.arguments import get_args
+
+
+args = get_args()
+
+if args.comet:
+    from comet_ml import Experiment
+
+    # need to import this before importing any TF modules
+    experiment = Experiment(api_key=args.comet, project_name=f"PPO: {args.env_name}")
+
+# import torch
+
 import gym
 import numpy as np
 import torch
@@ -12,15 +25,15 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from a2c_ppo_acktr import algo
-from a2c_ppo_acktr.arguments import get_args
 from a2c_ppo_acktr.envs import make_vec_envs
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
 from a2c_ppo_acktr.utils import get_vec_normalize, update_linear_schedule
 from a2c_ppo_acktr.visualize import visdom_plot
 
+args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-args = get_args()
+
 
 assert args.algo in ['a2c', 'ppo', 'acktr']
 if args.recurrent_policy:
@@ -65,7 +78,7 @@ def main():
     envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
                         args.gamma, args.log_dir, args.add_timestep, device, False)
 
-    actor_critic = Policy(envs.observation_space.shape, envs.action_space,
+    actor_critic = Policy(envs.observation_space, envs.action_space,
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
@@ -83,13 +96,20 @@ def main():
         agent = algo.A2C_ACKTR(actor_critic, args.value_loss_coef,
                                args.entropy_coef, acktr=True)
 
+    obs = envs.reset()
+
     rollouts = RolloutStorage(args.num_steps, args.num_processes,
                         envs.observation_space.shape, envs.action_space,
-                        actor_critic.recurrent_hidden_state_size)
+                        actor_critic.recurrent_hidden_state_size,
+                        obs_dtype=obs.dtype)
 
-    obs = envs.reset()
+    # print(f"obs: {obs}")
+    # print(obs.dtype)
+
+
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
+    # print(f"init rollouts: {rollouts.obs}")
 
     episode_rewards = deque(maxlen=10)
 
@@ -108,6 +128,10 @@ def main():
             agent.clip_param = args.clip_param  * (1 - j / float(num_updates))
 
         for step in range(args.num_steps):
+            # print(f"obs[step]: {rollouts.obs[step]}")
+            # print(f"rxs[step]: {rollouts.recurrent_hidden_states[step]}")
+            # print(f"masks[step]: {rollouts.masks[step]}")
+
             # Sample actions
             with torch.no_grad():
                 value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
@@ -170,6 +194,10 @@ def main():
                        np.max(episode_rewards), dist_entropy,
                        value_loss, action_loss))
 
+            if args.comet:
+                experiment.log_metric("mean reward", np.mean(episode_rewards), step=total_num_steps)
+                experiment.log_metric("median reward", np.median(episode_rewards), step=total_num_steps)
+
         if (args.eval_interval is not None
                 and len(episode_rewards) > 1
                 and j % args.eval_interval == 0):
@@ -219,4 +247,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

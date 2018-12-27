@@ -1,7 +1,5 @@
 import argparse
 
-import torch
-
 
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
@@ -47,6 +45,7 @@ def get_args():
                         help='eval interval, one eval per n updates (default: None)')
     parser.add_argument('--vis-interval', type=int, default=100,
                         help='vis interval, one log per n updates (default: 100)')
+    parser.add_argument('--comet', type=str, default=None, help='comet.ml API_KEY')
     parser.add_argument('--num-env-steps', type=int, default=10e6,
                         help='number of environment steps to train (default: 10e6)')
     parser.add_argument('--env-name', default='PongNoFrameskip-v4',
@@ -71,6 +70,5 @@ def get_args():
                         help='port to run the server on (default: 8097)')
     args = parser.parse_args()
 
-    args.cuda = not args.no_cuda and torch.cuda.is_available()
 
     return args

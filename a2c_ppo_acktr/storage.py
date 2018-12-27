@@ -7,8 +7,8 @@ def _flatten_helper(T, N, _tensor):
 
 
 class RolloutStorage(object):
-    def __init__(self, num_steps, num_processes, obs_shape, action_space, recurrent_hidden_state_size):
-        self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
+    def __init__(self, num_steps, num_processes, obs_shape, action_space, recurrent_hidden_state_size, obs_dtype=None):
+        self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape, dtype=obs_dtype)
         self.recurrent_hidden_states = torch.zeros(num_steps + 1, num_processes, recurrent_hidden_state_size)
         self.rewards = torch.zeros(num_steps, num_processes, 1)
         self.value_preds = torch.zeros(num_steps + 1, num_processes, 1)

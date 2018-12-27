@@ -13,19 +13,29 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None):
+    def __init__(self, obs_space, action_space, base=None, base_kwargs=None):
         super(Policy, self).__init__()
+
         if base_kwargs is None:
             base_kwargs = {}
+
+
+        obs_shape = obs_space.shape
+
         if base is None:
             if len(obs_shape) == 3:
                 base = CNNBase
+                input_shape = obs_shape[0]
             elif len(obs_shape) == 1:
                 base = MLPBase
+                input_shape = obs_shape[0]
+            elif len(obs_shape) == 0: # TODO - not quite sure this is the correct test
+                base = CategoricalMLPBase
+                input_shape = (16,) # TODO - fixme
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f"Can't figure out encoder network for shape {obs_shape}.")
 
-        self.base = base(obs_shape[0], **base_kwargs)
+        self.base = base(input_shape, **base_kwargs)
 
         if action_space.__class__.__name__ == "Discrete":
             num_outputs = action_space.n
@@ -246,5 +256,82 @@ class MLPBase(NNBase):
 
         hidden_critic = self.critic(x)
         hidden_actor = self.actor(x)
+
+        return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs
+
+
+
+class CategoricalMLPBase(NNBase):
+    def __init__(self, input_spaces, recurrent=False, hidden_size=64):
+        super(CategoricalMLPBase, self).__init__(recurrent, len(input_spaces), hidden_size)  # TODO - len(input_spaces) probably not what super constructor wants
+
+        input_space_dim = len(input_spaces)
+
+        if recurrent:
+            num_inputs = hidden_size
+
+        init_ = lambda m: init(m,
+            nn.init.orthogonal_,
+            lambda x: nn.init.constant_(x, 0),
+            np.sqrt(2))
+
+
+        assert len(input_spaces) == 1 # AK; otherwise, think again how to do this correctly; len(input_spaces) is number of distinct observations
+        # print(f"input_spaces[0]: {input_spaces[0]}")
+
+        self.actor_embeddings = nn.Embedding(input_spaces[0], hidden_size) # for i in range(len(input_spaces))]
+        self.actor_hidden = nn.Linear(input_space_dim*hidden_size, hidden_size)
+
+        self.critic_embeddings = nn.Embedding(input_spaces[0], hidden_size) # for i in range(len(input_spaces))]
+        self.critic_hidden = nn.Linear(input_space_dim * hidden_size, hidden_size)
+
+        # self.actor = nn.Sequential(
+        #     # init_(nn.Linear(num_inputs, hidden_size)),
+        #
+        #     nn.Tanh(),
+        #     init_(nn.Linear(hidden_size, hidden_size)),
+        #     nn.Tanh()
+        # )
+        #
+        # self.critic = nn.Sequential(
+        #     init_(nn.Linear(num_inputs, hidden_size)),
+        #     nn.Tanh(),
+        #     init_(nn.Linear(hidden_size, hidden_size)),
+        #     nn.Tanh()
+        # )
+
+        self.critic_linear = init_(nn.Linear(hidden_size, 1))
+
+        self.train()
+
+    def forward(self, inputs, rnn_hxs, masks):
+        num_inputs = len(inputs)
+        # print(f"num_in: {num_inputs}")
+        # print(f"base#forward inputs: {inputs}")
+
+        # print(f"inputs.shape {inputs.shape}")
+        ae = self.actor_embeddings(inputs)
+        # print(f"ae.shape: {ae.shape}")
+
+        hidden_actor = torch.tanh(self.actor_hidden(torch.tanh(ae)))
+        # print(f"ha shape: {hidden_actor.shape}")
+
+        ce = self.critic_embeddings(inputs)
+        # ce = [self.critic_embeddings(inputs[i]) for i in range(num_inputs)]
+        # conc_ce = torch.stack(ce)
+        hidden_critic = torch.tanh(self.critic_hidden(torch.tanh(ce)))
+
+        # print(f"ha shape: {hidden_actor.shape}")
+        # print(f"hc shape: {hidden_critic.shape}")
+
+
+        x = inputs
+
+        # TODO - this won't work
+        if self.is_recurrent:
+            x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
+
+        # hidden_critic = self.critic(x)
+        # hidden_actor = self.actor(x)
 
         return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs
