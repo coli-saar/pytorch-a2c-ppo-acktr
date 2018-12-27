@@ -1,6 +1,22 @@
 # pytorch-a2c-ppo-acktr
 
-## Please use hyper parameters from this readme. With other hyper parameters things might not work (it's RL after all)!
+## Readme for coli-saar
+
+I (AK) have adapted the original code to also accept categorical observations. This allows us to run it e.g. on FrozenLake and such, for direct comparison to our own [policy_gradient](https://github.com/coli-saar/policy_gradient) playground.
+
+To train PPO on FrozenLake, run the learner as follows:
+
+```
+python main.py --env-name "FrozenLake-v0" --algo ppo --use-gae --lr 2.5e-4 --clip-param 0.1 --value-loss-coef 0.5 --num-processes 8 --num-steps 128 --num-mini-batch 4 --vis-interval 1 --log-interval 1 --use-linear-lr-decay --use-linear-clip-decay --entropy-coef 0.01 --comet XXXX
+```
+
+where `XXX` is your comet.ml API key. Observation: PPO is much less vulnerable to the random start, and will converge quite reliably on FrozenLake.
+
+
+## Original README
+
+**Note:** Please use hyper parameters from this readme. With other hyper parameters things might not work (it's RL after all)!
+
 
 This is a PyTorch implementation of
 * Advantage Actor Critic (A2C), a synchronous deterministic version of [A3C](https://arxiv.org/pdf/1602.01783v1.pdf)
